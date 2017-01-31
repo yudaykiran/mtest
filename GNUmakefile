@@ -17,7 +17,7 @@ EXTERNAL_TOOLS=\
 # list only our .go files i.e. exlcudes any .go files from the vendor directory
 GOFILES_NOVENDOR = $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
-# Specify the name for the maya server binary
+# Specify the name for the mtest binary
 CTLNAME=mtest
 
 all: test

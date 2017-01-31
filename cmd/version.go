@@ -22,7 +22,7 @@ func (c *VersionCommand) Help() string {
 func (c *VersionCommand) Run(_ []string) int {
 	var versionString bytes.Buffer
 
-	fmt.Fprintf(&versionString, "Mayaserver v%s", c.Version)
+	fmt.Fprintf(&versionString, "Mtest v%s", c.Version)
 	if c.VersionPrerelease != "" {
 		fmt.Fprintf(&versionString, "-%s", c.VersionPrerelease)
 
@@ -36,5 +36,5 @@ func (c *VersionCommand) Run(_ []string) int {
 }
 
 func (c *VersionCommand) Synopsis() string {
-	return "Prints the Mayaserver version"
+	return "Prints the Mtest version"
 }

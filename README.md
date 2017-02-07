@@ -1,14 +1,21 @@
 # mtest
 
-> Functional testing of maya
+> A code that cannot be tested is flawed – Anonymous
 
-Mtest will cater to all functional test needs of mayaserver. Eventually,
-`mtest` or similar patterns may also be used to execute the functional tests 
-of other openebs repositories. One may think of using `mtest` as part of CI
-runs.
+Mtest will cater to various testing needs of openebs projects. One may think of 
+tuning Mtest to try out a particular customer use case. On a simpler scheme 
+of things Mtest will be used during CI runs.
 
 ## Moving parts of mtest
 
 - Will include a CLI
-- Will include libraries e.g. aws-sdk-go to test APIs of a running Mayaserver
-- Will provide options to install dependent programs prior to running a functional test-case
+- Will read a config file
+
+## Design References/Credits
+
+> Mtest has its design elements influenced from following libraries:
+
+- hashicorp/nomad
+- aws/aws-sdk-go
+- rancher/convoy
+

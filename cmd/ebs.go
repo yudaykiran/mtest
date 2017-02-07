@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/openebs/mtest/config"
-	"github.com/openebs/mtest/util"
-	"github.com/openebs/mtest/util/flag-helpers"
-	"github.com/openebs/mtest/util/gated-writer"
+	"github.com/openebs/mtest/logging"
+	"github.com/openebs/mtest/logging/flag-helpers"
+	"github.com/openebs/mtest/logging/gated-writer"
 
 	"github.com/hashicorp/go-syslog"
 	"github.com/hashicorp/logutils"
@@ -84,7 +84,7 @@ func (c *EBSCommand) readMtestConfig() *config.MtestConfig {
 }
 
 // setupLoggers is used to setup the logGate, logWriter, and our logOutput
-func (c *EBSCommand) setupLoggers(mtconfig *config.MtestConfig) (*gatedwriter.Writer, *util.LogWriter, io.Writer) {
+func (c *EBSCommand) setupLoggers(mtconfig *config.MtestConfig) (*gatedwriter.Writer, *logging.LogWriter, io.Writer) {
 	// Setup logging. First create the gated log writer, which will
 	// store logs until we're ready to show them. Then create the level
 	// filter, filtering logs of the specified level.
@@ -92,10 +92,10 @@ func (c *EBSCommand) setupLoggers(mtconfig *config.MtestConfig) (*gatedwriter.Wr
 		Writer: &cli.UiWriter{Ui: c.Ui},
 	}
 
-	c.logFilter = util.LevelFilter()
+	c.logFilter = logging.LevelFilter()
 	c.logFilter.MinLevel = logutils.LogLevel(strings.ToUpper(mtconfig.LogLevel))
 	c.logFilter.Writer = logGate
-	if !util.ValidateLevelFilter(c.logFilter.MinLevel, c.logFilter) {
+	if !logging.ValidateLevelFilter(c.logFilter.MinLevel, c.logFilter) {
 		c.Ui.Error(fmt.Sprintf(
 			"Invalid log level: %s. Valid log levels are: %v",
 			c.logFilter.MinLevel, c.logFilter.Levels))
@@ -110,11 +110,11 @@ func (c *EBSCommand) setupLoggers(mtconfig *config.MtestConfig) (*gatedwriter.Wr
 			c.Ui.Error(fmt.Sprintf("Syslog setup failed: %v", err))
 			return nil, nil, nil
 		}
-		syslog = &util.SyslogWrapper{l, c.logFilter}
+		syslog = &logging.SyslogWrapper{l, c.logFilter}
 	}
 
 	// Create a log writer, and wrap a logOutput around it
-	logWriter := util.NewLogWriter(512)
+	logWriter := logging.NewLogWriter(512)
 	var logOutput io.Writer
 	if syslog != nil {
 		logOutput = io.MultiWriter(c.logFilter, logWriter, syslog)

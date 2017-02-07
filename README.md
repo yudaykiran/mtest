@@ -2,8 +2,8 @@
 
 > A code that cannot be tested is flawed – Anonymous
 
-Mtest will cater to various testing needs of openebs projects. One may think of 
-tuning Mtest to try out a particular customer use case. On a simpler scheme 
+Mtest will cater to various testing needs of openebs projects. Mtest can be 
+easily guided to try out a particular customer use case. On a simpler scheme 
 of things Mtest will be used during CI runs.
 
 ## Moving parts of mtest

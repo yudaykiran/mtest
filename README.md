@@ -9,7 +9,9 @@ of things Mtest will be used during CI runs.
 ## Moving parts of mtest
 
 - Will include a CLI
-- Will read a config file
+- Will read a config file (WIP)
+- Concept of Runners, Drivers & Executors (WIP)
+
 
 ## Design References/Credits
 
@@ -18,4 +20,4 @@ of things Mtest will be used during CI runs.
 - hashicorp/nomad
 - aws/aws-sdk-go
 - rancher/convoy
-
+- k8s e2e concepts

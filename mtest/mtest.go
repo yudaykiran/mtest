@@ -1,26 +1,13 @@
-// NOTE :
-//    Design & structure will change as the current code is in pre alpha stage
+// Package mtest provides the entry point to trigger testing of various
+// OpenEBS projects.
 //
-// Package mtest manages triggering of various OpenEBS projects' functional
-// tests. The OpenEBS projects are known as Runners.
+// OpenEBS projects are known as **Runners**.
 //
-// The Mtest is the primary method of `managing` execution of Runners
+// Mtest provides the structure to manage execution of a Runner
 //
 // Mtest makes use of Start() method to trigger a particular Runner.
-// TODO:
-//    Eventually, we Mtest might start multiple Runners together.
 //
-// Example of creating a particular Mtest
-//
-//     mt := NewMtest()
-//
-//     // Retrieve the credentials value
-//     report, err := mt.Start()
-//     if err != nil {
-//         // handle error
-//     }
-//
-// Example of an alternative coding style:
+// Example of creating a particular Mtest:
 //
 //     mt := NewMtest(&GotgtRunner{})
 //     report, err := mt.Start()
@@ -48,26 +35,32 @@ import (
 // A Report is the Runner's run report structure for individual report fields.
 type Report struct {
 
-	// Test case name
-	Name string
+	// The runner that ran the use-case
+	Runner string
 
-	// Run message
-	Message string
+	// Use case name
+	Usecase string
 
-	// Run status
+	// Run's entire response can be embedded here
+	Message interface{}
+
+	// A descriptive status used when Message is nil
 	Status string
 
-	// Run flag indicating success or failed
+	// Overall run status as a flag
 	Success bool
 }
 
 // `Runner` is the interface for any OpenEBS program. A Runner will
-// use various libraries, sdk, programs, etc (`known as triggers`)
-// to test the OpenEBS program.
+// use `Mtest drivers` to test an OpenEBS program.
 type Runner interface {
+
+	// Name returns the name of the Runner
+	Name() string
+
 	// Run returns a run report on successful execution of test case(s).
 	// Error is returned if the report were not obtainable, due to issues.
-	Run() (*Report, error)
+	Run() ([]*Report, error)
 
 	// IsParallel indicates if test cases within a Run() can be
 	// executed in parallel. The assumption is there are multiple test cases
@@ -116,12 +109,11 @@ func (p *Parallel) IsParallel() bool {
 // Mtest is safe to use across multiple goroutines and will manage to
 // provide the current status of execution via report.
 type Mtest struct {
-	report  *Report
+	reports []*Report
 	running bool
 	m       sync.Mutex
 
 	runner Runner
-	Parallel
 }
 
 // NewMtest returns a pointer to a new Mtest with the runner.
@@ -133,29 +125,25 @@ func NewMtest(runner Runner) *Mtest {
 }
 
 // Start returns the report value, or error if the runner failed to run
-//
-// TODO
-// There will be structural changes that takes into account `start
-// of multiple runners in parallel` & `each runner running multiple
-// test cases in parallel`.
-func (t *Mtest) Start() (*Report, error) {
+func (t *Mtest) Start() ([]*Report, error) {
 	t.m.Lock()
 	defer t.m.Unlock()
 
 	if t.isRunning() {
-		report, err := t.runner.Run()
+		reports, err := t.runner.Run()
 		if err != nil {
 			return nil, err
 		}
-		t.report = report
+
+		t.reports = reports
 		t.running = true
 	}
 
-	return t.report, nil
+	return t.reports, nil
 }
 
 // Stop stops the mtest.
-
+//
 // TODO
 // This can be used to signal the runners to stop s.t each runner can
 // arrive at a safe state before actually stopping.

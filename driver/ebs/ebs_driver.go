@@ -181,8 +181,7 @@ func (d *EBSDriver) Executors(hints ...string) (map[string]driver.Executor, erro
 		executor, err := executors[hint](d)
 
 		if err != nil {
-			log.Warnf(" Failed to fetch executor %s, err: %v", hint, err)
-			continue
+			return nil, err
 		}
 
 		execs[hint] = executor

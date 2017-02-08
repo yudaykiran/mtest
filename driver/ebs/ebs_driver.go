@@ -24,11 +24,13 @@ const (
 	OPT_MOUNT_POINT           = "MountPoint"
 	OPT_SIZE                  = "Size"
 	OPT_FORMAT                = "Format"
+	OPT_VOLUME_ID             = "VolumeID"
 	OPT_VOLUME_NAME           = "VolumeName"
 	OPT_VOLUME_DRIVER_ID      = "VolumeDriverID"
 	OPT_VOLUME_TYPE           = "VolumeType"
 	OPT_VOLUME_IOPS           = "VolumeIOPS"
 	OPT_VOLUME_CREATED_TIME   = "VolumeCreatedAt"
+	OPT_SNAPSHOT_ID           = "SnapshotID"
 	OPT_SNAPSHOT_NAME         = "SnapshotName"
 	OPT_SNAPSHOT_CREATED_TIME = "SnapshotCreatedAt"
 	OPT_BACKUP_URL            = "BackupURL"
@@ -58,7 +60,18 @@ func init() {
 	// Register by passing the name of the driver
 	// and the function definition.
 	driver.Register(DRIVER_NAME, Init)
-	executors = make(map[string]InitExecFunc)
+
+	// There takes care of initialization order of executors
+	// & this driver. Remember that this driver & its executors
+	// are in same package.
+	makeExecutors()
+}
+
+func makeExecutors() {
+
+	if len(executors) == 0 {
+		executors = make(map[string]InitExecFunc)
+	}
 }
 
 // Initialize the EBSDriver as a MtestDriver
@@ -135,6 +148,11 @@ func Init(root string, config map[string]string) (driver.MtestDriver, error) {
 // of the known driver. `InitExecFunc` is supposed to be defined in
 // each driver executor implementation.
 func RegisterAsEBSExecutor(name string, iExecFn InitExecFunc) error {
+
+	// This voids the ordering of init() calls of this .go file
+	// & its executors' .go files.
+	makeExecutors()
+
 	_, exists := executors[name]
 
 	if exists {
@@ -341,19 +359,6 @@ func (d *EBSDriver) getSnapshotAndVolume(snapshotID, volumeID string) (*Snapshot
 	return &snap, volume, nil
 }
 
-func (d *EBSDriver) GetSnapshotInfo(req driver.Request) (map[string]string, error) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-
-	id := req.Name
-	volumeID, err := util.GetFieldFromOpts(OPT_VOLUME_NAME, req.Options)
-	if err != nil {
-		return nil, err
-	}
-
-	return d.getSnapshotInfo(id, volumeID)
-}
-
 func (d *EBSDriver) getSnapshotInfo(id, volumeID string) (map[string]string, error) {
 	// Snapshot on EBS can be removed by DeleteBackup
 	removed := false
@@ -391,45 +396,6 @@ func (d *EBSDriver) getSnapshotInfo(id, volumeID string) (map[string]string, err
 	return info, nil
 }
 
-func (d *EBSDriver) ListSnapshot(opts map[string]string) (map[string]map[string]string, error) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-
-	var (
-		volumeIDs []string
-		err       error
-	)
-
-	snapshots := make(map[string]map[string]string)
-	specifiedVolumeID, _ := util.GetFieldFromOpts(OPT_VOLUME_NAME, opts)
-
-	if specifiedVolumeID != "" {
-		volumeIDs = []string{
-			specifiedVolumeID,
-		}
-	} else {
-		volumeIDs, err = d.listVolumeNames()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	for _, volumeID := range volumeIDs {
-		volume := d.blankVolume(volumeID)
-		if err := util.ObjectLoad(volume); err != nil {
-			return nil, err
-		}
-		for snapshotID := range volume.Snapshots {
-			snapshots[snapshotID], err = d.getSnapshotInfo(snapshotID, volumeID)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return snapshots, nil
-}
-
 func checkEBSSnapshotID(id string) error {
 	validID := regexp.MustCompile(`^snap-[0-9a-z]+$`)
 	if !validID.MatchString(id) {
@@ -458,58 +424,4 @@ func decodeURL(backupURL string) (string, string, error) {
 	}
 
 	return region, ebsSnapshotID, nil
-}
-
-func (d *EBSDriver) CreateBackup(snapshotID, volumeID, destURL string, opts map[string]string) (string, error) {
-	//destURL is not necessary in EBS case
-	snapshot, _, err := d.getSnapshotAndVolume(snapshotID, volumeID)
-	if err != nil {
-		return "", err
-	}
-
-	if err := d.client.WaitForSnapshotComplete(snapshot.EBSID); err != nil {
-		return "", err
-	}
-	return encodeURL(d.client.Region, snapshot.EBSID), nil
-}
-
-func (d *EBSDriver) DeleteBackup(backupURL string) error {
-	// Would remove the snapshot
-	region, ebsSnapshotID, err := decodeURL(backupURL)
-	if err != nil {
-		return err
-	}
-	if err := d.client.DeleteSnapshotWithRegion(ebsSnapshotID, region); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (d *EBSDriver) GetBackupInfo(backupURL string) (map[string]string, error) {
-	region, ebsSnapshotID, err := decodeURL(backupURL)
-	if err != nil {
-		return nil, err
-	}
-
-	ebsSnapshot, err := d.client.GetSnapshotWithRegion(ebsSnapshotID, region)
-	if err != nil {
-		return nil, err
-	}
-
-	info := map[string]string{
-		"Region":        region,
-		"EBSSnapshotID": aws.StringValue(ebsSnapshot.SnapshotId),
-		"EBSVolumeID":   aws.StringValue(ebsSnapshot.VolumeId),
-		"KmsKeyId":      aws.StringValue(ebsSnapshot.KmsKeyId),
-		"StartTime":     (*ebsSnapshot.StartTime).Format(time.RubyDate),
-		"Size":          strconv.FormatInt(*ebsSnapshot.VolumeSize*GB, 10),
-		"State":         aws.StringValue(ebsSnapshot.State),
-	}
-
-	return info, nil
-}
-
-func (d *EBSDriver) ListBackup(destURL string, opts map[string]string) (map[string]map[string]string, error) {
-	//EBS doesn't support ListBackup(), return empty to satisfy caller
-	return map[string]map[string]string{}, nil
 }

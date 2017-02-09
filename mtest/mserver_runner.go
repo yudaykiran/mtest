@@ -1,6 +1,9 @@
 package mtest
 
 import (
+	"fmt"
+	"io"
+	"log"
 	"os"
 	"strconv"
 
@@ -19,18 +22,30 @@ const (
 
 // A MserverRunner structure definition
 type MserverRunner struct {
+	logger *log.Logger
 	Parallel
 	inprogress bool
 }
 
-// NewMserverMtest returns a pointer to a new Mtest object
-// wrapping the Mserver runner. A convenience function.
-func NewMserverMtest() *Mtest {
-	return NewMtest(&MserverRunner{})
+// NewMserverRunner returns a new instance of Mtest that
+// wraps a Mserver Runner instance with it.
+func NewMserverRunner(logWriter io.Writer) (*Mtest, error) {
+
+	if logWriter == nil {
+		return nil, fmt.Errorf("Log writer not provided to MServerRunner")
+	}
+
+	return newMtest(&MserverRunner{
+		logger: log.New(logWriter, "", log.LstdFlags|log.Lmicroseconds),
+	})
 }
 
 func (r *MserverRunner) Name() string {
 	return MTEST_MSERVER_RUNNER_NAME
+}
+
+func (r *MserverRunner) Logger() *log.Logger {
+	return r.logger
 }
 
 // Run runs the use cases against a running Mserver process

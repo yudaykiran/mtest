@@ -15,6 +15,7 @@ import (
 	"github.com/openebs/mtest/logging"
 	"github.com/openebs/mtest/logging/flag-helpers"
 	"github.com/openebs/mtest/logging/gated-writer"
+	"github.com/openebs/mtest/mtest"
 
 	"github.com/hashicorp/go-syslog"
 	"github.com/hashicorp/logutils"
@@ -31,36 +32,44 @@ const gracefulTimeout = 5 * time.Second
 // requirements. In addition, EBS version compatibility testing should
 // also be taken care of by this single command line implementation.
 type EBSCommand struct {
-	Ui        cli.Ui
-	args      []string
-	logFilter *logutils.LevelFilter
-	logOutput io.Writer
+	Ui          cli.Ui
+	args        []string
+	logFilter   *logutils.LevelFilter
+	multiLogger io.Writer
 }
 
+// This will provide a final validated mtest configuration.
 func (c *EBSCommand) readMtestConfig() *config.MtestConfig {
-	var configPath []string
+	// Variable to hold a set of config paths
+	var configPaths []string
 
 	// Make a new, empty mtest config.
+	// TODO
+	//    when user will provide config options
+	//    while using this CLI
 	cmdConfig := &config.MtestConfig{}
 
 	flags := flag.NewFlagSet("ebs", flag.ContinueOnError)
 	flags.Usage = func() { c.Ui.Error(c.Help()) }
 
 	// options
-	flags.Var((*flaghelper.StringFlag)(&configPath), "config", "config")
+	flags.Var((*flaghelper.StringFlag)(&configPaths), "config", "path(s) of config file(s)")
 
-	if err := flags.Parse(c.args); err != nil {
+	err := flags.Parse(c.args)
+	if err != nil {
+		c.Ui.Error(fmt.Sprintf("Error loading configuration from %v. %s", configPaths, err))
+
 		return nil
 	}
 
-	// Load the configuration
+	// Get the default configuration
 	mtconfig := config.DefaultMtestConfig()
 
-	for _, path := range configPath {
+	for _, path := range configPaths {
 		current, err := config.LoadMtestConfig(path)
 		if err != nil {
-			c.Ui.Error(fmt.Sprintf(
-				"Error loading configuration from %s: %s", path, err))
+			c.Ui.Error(fmt.Sprintf("Error loading configuration from %s: %s", path, err))
+
 			return nil
 		}
 
@@ -83,18 +92,24 @@ func (c *EBSCommand) readMtestConfig() *config.MtestConfig {
 	return mtconfig
 }
 
-// setupLoggers is used to setup the logGate, logWriter, and our logOutput
+// setupLoggers is used to setup various logger variants named as
+// gatedLogger, logPipe, and multiLogger
 func (c *EBSCommand) setupLoggers(mtconfig *config.MtestConfig) (*gatedwriter.Writer, *logging.LogWriter, io.Writer) {
-	// Setup logging. First create the gated log writer, which will
-	// store logs until we're ready to show them. Then create the level
-	// filter, filtering logs of the specified level.
-	logGate := &gatedwriter.Writer{
+	// Setup filtered-gated-logger !!
+	// First create the gated log writer, which will buffer logs until we're ready.
+	gatedLogger := &gatedwriter.Writer{
+		// Set gated logger's writer against that of CLI's
+		// Any messages to this CLI will be logged as per
+		// gated logger's logic
 		Writer: &cli.UiWriter{Ui: c.Ui},
 	}
 
+	// Now create the level filter, filtering logs of the specified level.
+	// This filtering will be set on top of just created gated logger
 	c.logFilter = logging.LevelFilter()
 	c.logFilter.MinLevel = logutils.LogLevel(strings.ToUpper(mtconfig.LogLevel))
-	c.logFilter.Writer = logGate
+	c.logFilter.Writer = gatedLogger
+
 	if !logging.ValidateLevelFilter(c.logFilter.MinLevel, c.logFilter) {
 		c.Ui.Error(fmt.Sprintf(
 			"Invalid log level: %s. Valid log levels are: %v",
@@ -110,52 +125,74 @@ func (c *EBSCommand) setupLoggers(mtconfig *config.MtestConfig) (*gatedwriter.Wr
 			c.Ui.Error(fmt.Sprintf("Syslog setup failed: %v", err))
 			return nil, nil, nil
 		}
+
+		// Setup syslog-filtered-gated-logger !!
 		syslog = &logging.SyslogWrapper{l, c.logFilter}
 	}
 
-	// Create a log writer, and wrap a logOutput around it
-	logWriter := logging.NewLogWriter(512)
-	var logOutput io.Writer
+	// Create a log pipe too
+	// This acts as a log sink with pipes (i.e. otherwise known as handles)
+	// that can be directed to various sink handlers.
+	//    NOTE:
+	//      These handlers can be registered (& de-registered) at a later
+	//      point of time dynamically.
+	logPipe := logging.NewLogWriter(512)
+
+	// Create a multi-write logger around all the above log variants
+	var multiLogger io.Writer
 	if syslog != nil {
-		logOutput = io.MultiWriter(c.logFilter, logWriter, syslog)
+		multiLogger = io.MultiWriter(c.logFilter, logPipe, syslog)
 	} else {
-		logOutput = io.MultiWriter(c.logFilter, logWriter)
+		multiLogger = io.MultiWriter(c.logFilter, logPipe)
 	}
-	c.logOutput = logOutput
-	log.SetOutput(logOutput)
-	return logGate, logWriter, logOutput
+
+	c.multiLogger = multiLogger
+
+	// Set our multi-write logger as logging mechanism
+	// Why ? Coz our multi-write logger has everything !!
+	log.SetOutput(multiLogger)
+
+	// Provide all the logger variants
+	return gatedLogger, logPipe, multiLogger
 }
 
 func (c *EBSCommand) Run(args []string) int {
+	// Decorate this CLI's UI
 	c.Ui = &cli.PrefixedUi{
-		OutputPrefix: "==> ",
-		InfoPrefix:   "    ",
-		ErrorPrefix:  "==> ",
+		OutputPrefix: " ",
+		InfoPrefix:   "INFO:  ",
+		ErrorPrefix:  "ERROR: ",
 		Ui:           c.Ui,
 	}
 
-	// Parse our configs
+	// Set the args which may have the mtest config
 	c.args = args
+	// Parse the mtest config
 	mtconfig := c.readMtestConfig()
 	if mtconfig == nil {
 		return 1
 	}
 
 	// Setup the log outputs
-	//logGate, _, logOutput := c.setupLoggers(mtconfig)
-	logGate, _, _ := c.setupLoggers(mtconfig)
-	if logGate == nil {
+	gatedLogger, _, multiLogger := c.setupLoggers(mtconfig)
+	if gatedLogger == nil {
+		return 1
+	}
+	defer gatedLogger.Flush()
+
+	if multiLogger == nil {
+		c.Ui.Error(fmt.Sprintf("Log setup failed. Nil instance of multi-write logger found."))
 		return 1
 	}
 
-	// Log config files
+	// Inform about mt configuration file(s)
 	if len(mtconfig.Files) > 0 {
 		c.Ui.Info(fmt.Sprintf("Loaded configuration from %s", strings.Join(mtconfig.Files, ", ")))
 	} else {
 		c.Ui.Info("No configuration files loaded")
 	}
 
-	// Compile Maya server information for output later
+	// Build Mtest information for messaging
 	info := make(map[string]string)
 	info["version"] = fmt.Sprintf("%s%s", mtconfig.Version, mtconfig.VersionPrerelease)
 	info["log level"] = mtconfig.LogLevel
@@ -180,14 +217,27 @@ func (c *EBSCommand) Run(args []string) int {
 	c.Ui.Output("")
 
 	// Output the header that the server has started
-	c.Ui.Output("Mtest ebs run started! Log data will stream in below:\n")
+	c.Ui.Output("Mtest ebs run started! Log data will start streaming:\n")
 
-	// Enable log streaming
-	logGate.Flush()
+	// ebs cli is meant to run Maya Server
+	// Get a Mtest instance that is associated with Maya Server
+	//
+	// NOTE:
+	//  We will use the multi-write logger
+	mt, err := mtest.NewMserverRunner(multiLogger)
+	if err != nil {
+		c.Ui.Error(err.Error())
+		return 0
+	}
 
-	err := 0
+	// Start EBS use cases
+	_, err = mt.Start()
+	if err != nil {
+		c.Ui.Error(err.Error())
+		return 0
+	}
 
-	return err
+	return 0
 }
 
 func (c *EBSCommand) Synopsis() string {

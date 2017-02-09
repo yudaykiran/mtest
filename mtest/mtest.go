@@ -1,7 +1,7 @@
 // Package mtest provides the entry point to trigger testing of various
 // OpenEBS projects.
 //
-// OpenEBS projects are known as **Runners**.
+// A running OpenEBS process is known as a *Runner*.
 //
 // Mtest provides the structure to manage execution of a Runner
 //
@@ -29,6 +29,8 @@
 package mtest
 
 import (
+	"fmt"
+	"log"
 	"sync"
 )
 
@@ -70,6 +72,10 @@ type Runner interface {
 	// IsComplete indicates if the runner has completed execution of its
 	// test cases against the OpenEBS program.
 	IsComplete() bool
+
+	// The logger that Runner is using currently.
+	// This one will be used by Mtest too.
+	Logger() *log.Logger
 }
 
 // `Parallel` provides shared parallelism logic to be used by Mtest
@@ -109,6 +115,7 @@ func (p *Parallel) IsParallel() bool {
 // Mtest is safe to use across multiple goroutines and will manage to
 // provide the current status of execution via report.
 type Mtest struct {
+	logger  *log.Logger
 	reports []*Report
 	running bool
 	m       sync.Mutex
@@ -116,20 +123,33 @@ type Mtest struct {
 	runner Runner
 }
 
-// NewMtest returns a pointer to a new Mtest with the runner.
-func NewMtest(runner Runner) *Mtest {
+// newMtest returns a new instance of Mtest that is
+// associated with a runner.
+func newMtest(runner Runner) (*Mtest, error) {
+
+	if runner == nil {
+		return nil, fmt.Errorf("A runner is required to create Mtest")
+	}
+
+	if runner.Logger() == nil {
+		return nil, fmt.Errorf("Invalid runner provided. Logger missing in runner.")
+	}
+
 	return &Mtest{
+		logger:  runner.Logger(),
 		runner:  runner,
 		running: false,
-	}
+	}, nil
 }
 
-// Start returns the report value, or error if the runner failed to run
+// Start will start this Mtest's associated runner, will return
+// the result as repots, or error if the runner failed.
 func (t *Mtest) Start() ([]*Report, error) {
 	t.m.Lock()
 	defer t.m.Unlock()
 
 	if t.isRunning() {
+		// Run the Runner !!
 		reports, err := t.runner.Run()
 		if err != nil {
 			return nil, err
@@ -142,11 +162,7 @@ func (t *Mtest) Start() ([]*Report, error) {
 	return t.reports, nil
 }
 
-// Stop stops the mtest.
-//
-// TODO
-// This can be used to signal the runners to stop s.t each runner can
-// arrive at a safe state before actually stopping.
+// Signals a stop of mtest
 func (t *Mtest) Stop() {
 	t.m.Lock()
 	defer t.m.Unlock()

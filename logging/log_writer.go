@@ -5,8 +5,10 @@ import (
 	"sync"
 )
 
-// LogHandler interface is used for clients that want to subscribe
-// to logs, for example to stream them over an IPC mechanism
+// LogHandler interface provides a blueprint for clients
+// that want to subscribe to logs,
+//    e.g.
+//      to stream them over an IPC mechanism
 type LogHandler interface {
 	HandleLog(string)
 }
@@ -22,16 +24,20 @@ type LogWriter struct {
 }
 
 // NewLogWriter creates a logWriter with the given buffer capacity
-func NewLogWriter(buf int) *LogWriter {
+func NewLogWriter(bufCap int) *LogWriter {
 	return &LogWriter{
-		logs:     make([]string, buf),
+		logs:     make([]string, bufCap),
 		index:    0,
 		handlers: make(map[LogHandler]struct{}),
 	}
 }
 
 // RegisterHandler adds a log handler to receive logs, and sends
-// the last buffered logs to the handler
+// the **last buffered logs** to the handler.
+//
+// NOTE: In other words even if the handler is registered
+// later, it will be able to get last portions of the logs
+// if available.
 func (l *LogWriter) RegisterHandler(lh LogHandler) {
 	l.Lock()
 	defer l.Unlock()

@@ -110,6 +110,38 @@ func (p *Parallel) IsParallel() bool {
 	return false
 }
 
+// Blueprint to create Mtest structure.
+type MtestMaker interface {
+	Make() (*Mtest, error)
+}
+
+// A structure that abides by MtestMaker blueprint
+type MtestMake struct {
+	runner Runner
+	logger *log.Logger
+}
+
+// The interface method
+func (t *MtestMake) Make() (*Mtest, error) {
+	if t.runner == nil {
+		return nil, fmt.Errorf("Runner is required to create Mtest")
+	}
+
+	if t.runner.Logger() != nil {
+		t.logger = t.runner.Logger()
+	}
+
+	if t.logger == nil {
+		return nil, fmt.Errorf("Logger required to create Mtest")
+	}
+
+	return &Mtest{
+		logger:  t.logger,
+		runner:  t.runner,
+		running: false,
+	}, nil
+}
+
 // Mtest provides a synchronous start of runners.
 //
 // Mtest is safe to use across multiple goroutines and will manage to
@@ -123,27 +155,30 @@ type Mtest struct {
 	runner Runner
 }
 
-// newMtest returns a new instance of Mtest that is
-// associated with a runner.
-func newMtest(runner Runner) (*Mtest, error) {
+// A setter method that can change the runner at run-time.
+// There are some checks which if satisfied leads to overriding
+// of old runner.
+//
+// Usage:
+//    There are multiple usages starting from
+//    ability to unit test Mtest methods to managing future
+//    requirements.
+func (t *Mtest) SetRunner(newRunner Runner) (Runner, error) {
+	t.m.Lock()
+	defer t.m.Unlock()
 
-	if runner == nil {
-		return nil, fmt.Errorf("A runner is required to create Mtest")
+	old := t.runner
+
+	if !t.isRunning() {
+		t.runner = newRunner
+		return old, nil
 	}
 
-	if runner.Logger() == nil {
-		return nil, fmt.Errorf("Invalid runner provided. Logger missing in runner.")
-	}
-
-	return &Mtest{
-		logger:  runner.Logger(),
-		runner:  runner,
-		running: false,
-	}, nil
+	return nil, fmt.Errorf("Can not set a new runner when mtest is running")
 }
 
 // Start will start this Mtest's associated runner, will return
-// the result as repots, or error if the runner failed.
+// the result as reports, or error if the runner failed.
 func (t *Mtest) Start() ([]*Report, error) {
 	t.m.Lock()
 	defer t.m.Unlock()

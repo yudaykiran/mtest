@@ -94,8 +94,8 @@ func Register(name string, initFunc InitFunc) error {
 func GetDriver(name, root string, config map[string]string) (MtestDriver, error) {
 	_, exists := initializers[name]
 
-	if exists {
-		return nil, fmt.Errorf("MtestDriver %v is not supported!", name)
+	if !exists {
+		return nil, fmt.Errorf("MtestDriver '%v' is not supported!", name)
 	}
 
 	drvRoot := filepath.Join(root, name)

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 
 	"sort"
 	"strings"
@@ -29,6 +30,39 @@ type MtestConfig struct {
 
 	// List of config files that have been loaded (in order)
 	Files []string `mapstructure:"-"`
+}
+
+// The blueprint to build MtestConfig structures
+type MtestConfigMaker interface {
+	Make(paths []string) (*MtestConfig, error)
+}
+
+type MtestConfigMake struct {
+}
+
+func (pc MtestConfigMake) Make(configPaths []string) (*MtestConfig, error) {
+	// Get the default configuration
+	dConfig := DefaultMtestConfig()
+
+	for _, path := range configPaths {
+		current, err := LoadMtestConfig(path)
+		if err != nil {
+			return nil, fmt.Errorf("Error loading configuration from %s: %s", path, err)
+		}
+
+		// Didn't find any config at given path
+		if current == nil || reflect.DeepEqual(current, &MtestConfig{}) {
+			return nil, fmt.Errorf("No configuration loaded from %s", path)
+		}
+
+		if dConfig == nil {
+			dConfig = current
+		} else {
+			dConfig = dConfig.Merge(current)
+		}
+	}
+
+	return dConfig, nil
 }
 
 // DefaultMtestConfig is a the baseline configuration for Mtest

@@ -3,9 +3,6 @@ package cmd
 import (
 	"flag"
 	"fmt"
-	"io"
-	"log"
-	"reflect"
 	"sort"
 
 	"strings"
@@ -13,13 +10,11 @@ import (
 
 	"github.com/openebs/mtest/config"
 	"github.com/openebs/mtest/logging"
-	"github.com/openebs/mtest/logging/flag-helpers"
-	"github.com/openebs/mtest/logging/gated-writer"
 	"github.com/openebs/mtest/mtest"
 
-	"github.com/hashicorp/go-syslog"
 	"github.com/hashicorp/logutils"
 	"github.com/mitchellh/cli"
+	"github.com/openebs/mtest/logging/flag-helpers"
 )
 
 // gracefulTimeout controls how long we wait before forcefully terminating
@@ -35,7 +30,9 @@ type EBSCommand struct {
 	Ui          cli.Ui
 	args        []string
 	logFilter   *logutils.LevelFilter
-	multiLogger io.Writer
+	mtConfMake  config.MtestConfigMaker
+	wtrVarsMake logging.WriterVariantsMaker
+	mtestMake   mtest.MtestMaker
 }
 
 // This will provide a final validated mtest configuration.
@@ -58,32 +55,18 @@ func (c *EBSCommand) readMtestConfig() *config.MtestConfig {
 	err := flags.Parse(c.args)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("Error loading configuration from %v. %s", configPaths, err))
-
 		return nil
 	}
 
-	// Get the default configuration
-	mtconfig := config.DefaultMtestConfig()
+	if c.mtConfMake == nil {
+		c.Ui.Error(fmt.Sprintf("Mtest-config-maker instance is nil"))
+		return nil
+	}
 
-	for _, path := range configPaths {
-		current, err := config.LoadMtestConfig(path)
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf("Error loading configuration from %s: %s", path, err))
-
-			return nil
-		}
-
-		// The user asked us to load some config here but we didn't find any,
-		// so we'll complain but continue.
-		if current == nil || reflect.DeepEqual(current, &config.MtestConfig{}) {
-			c.Ui.Warn(fmt.Sprintf("No configuration loaded from %s", path))
-		}
-
-		if mtconfig == nil {
-			mtconfig = current
-		} else {
-			mtconfig = mtconfig.Merge(current)
-		}
+	mtconfig, err := c.mtConfMake.Make(configPaths)
+	if err != nil {
+		c.Ui.Error(err.Error())
+		return nil
 	}
 
 	// Merge any CLI options over config file options
@@ -92,68 +75,16 @@ func (c *EBSCommand) readMtestConfig() *config.MtestConfig {
 	return mtconfig
 }
 
-// setupLoggers is used to setup various logger variants named as
-// gatedLogger, logPipe, and multiLogger
-func (c *EBSCommand) setupLoggers(mtconfig *config.MtestConfig) (*gatedwriter.Writer, *logging.LogWriter, io.Writer) {
-	// Setup filtered-gated-logger !!
-	// First create the gated log writer, which will buffer logs until we're ready.
-	gatedLogger := &gatedwriter.Writer{
-		// Set gated logger's writer against that of CLI's
-		// Any messages to this CLI will be logged as per
-		// gated logger's logic
-		Writer: &cli.UiWriter{Ui: c.Ui},
-	}
+func (c *EBSCommand) SetMtestMaker(mtestMake mtest.MtestMaker) {
+	c.mtestMake = mtestMake
+}
 
-	// Now create the level filter, filtering logs of the specified level.
-	// This filtering will be set on top of just created gated logger
-	c.logFilter = logging.LevelFilter()
-	c.logFilter.MinLevel = logutils.LogLevel(strings.ToUpper(mtconfig.LogLevel))
-	c.logFilter.Writer = gatedLogger
+func (c *EBSCommand) SetMtConfMaker(mtConfMake config.MtestConfigMaker) {
+	c.mtConfMake = mtConfMake
+}
 
-	if !logging.ValidateLevelFilter(c.logFilter.MinLevel, c.logFilter) {
-		c.Ui.Error(fmt.Sprintf(
-			"Invalid log level: %s. Valid log levels are: %v",
-			c.logFilter.MinLevel, c.logFilter.Levels))
-		return nil, nil, nil
-	}
-
-	// Check if syslog is enabled
-	var syslog io.Writer
-	if mtconfig.EnableSyslog {
-		l, err := gsyslog.NewLogger(gsyslog.LOG_NOTICE, mtconfig.SyslogFacility, "mtest")
-		if err != nil {
-			c.Ui.Error(fmt.Sprintf("Syslog setup failed: %v", err))
-			return nil, nil, nil
-		}
-
-		// Setup syslog-filtered-gated-logger !!
-		syslog = &logging.SyslogWrapper{l, c.logFilter}
-	}
-
-	// Create a log pipe too
-	// This acts as a log sink with pipes (i.e. otherwise known as handles)
-	// that can be directed to various sink handlers.
-	//    NOTE:
-	//      These handlers can be registered (& de-registered) at a later
-	//      point of time dynamically.
-	logPipe := logging.NewLogWriter(512)
-
-	// Create a multi-write logger around all the above log variants
-	var multiLogger io.Writer
-	if syslog != nil {
-		multiLogger = io.MultiWriter(c.logFilter, logPipe, syslog)
-	} else {
-		multiLogger = io.MultiWriter(c.logFilter, logPipe)
-	}
-
-	c.multiLogger = multiLogger
-
-	// Set our multi-write logger as logging mechanism
-	// Why ? Coz our multi-write logger has everything !!
-	log.SetOutput(multiLogger)
-
-	// Provide all the logger variants
-	return gatedLogger, logPipe, multiLogger
+func (c *EBSCommand) SetWriterMaker(wtrVarsMake logging.WriterVariantsMaker) {
+	c.wtrVarsMake = wtrVarsMake
 }
 
 func (c *EBSCommand) Run(args []string) int {
@@ -173,13 +104,20 @@ func (c *EBSCommand) Run(args []string) int {
 		return 1
 	}
 
+	if c.wtrVarsMake == nil {
+		c.Ui.Error(fmt.Sprintf("Writer-variants-maker instance is nil."))
+		return 1
+	}
+
 	// Setup the log outputs
-	gatedLogger, _, multiLogger := c.setupLoggers(mtconfig)
+	gatedLogger := c.wtrVarsMake.GatedWriter()
+
 	if gatedLogger == nil {
 		return 1
 	}
 	defer gatedLogger.Flush()
 
+	multiLogger := c.wtrVarsMake.MultiWriter()
 	if multiLogger == nil {
 		c.Ui.Error(fmt.Sprintf("Log setup failed. Nil instance of multi-write logger found."))
 		return 1
@@ -216,19 +154,21 @@ func (c *EBSCommand) Run(args []string) int {
 	}
 	c.Ui.Output("")
 
-	// Output the header that the server has started
-	c.Ui.Output("Mtest ebs run started! Log data will start streaming:\n")
+	if c.mtestMake == nil {
+		c.Ui.Error(fmt.Sprintf("Mtest-maker instance is nil."))
+		return 1
+	}
 
 	// ebs cli is meant to run Maya Server
 	// Get a Mtest instance that is associated with Maya Server
-	//
-	// NOTE:
-	//  We will use the multi-write logger
-	mt, err := mtest.NewMserverRunner(multiLogger)
+	mt, err := c.mtestMake.Make()
 	if err != nil {
 		c.Ui.Error(err.Error())
 		return 0
 	}
+
+	// Output the header that the server has started
+	c.Ui.Output("Mtest ebs run started! Log data will start streaming:\n")
 
 	// Start EBS use cases
 	_, err = mt.Start()

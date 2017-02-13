@@ -27,17 +27,19 @@ type MserverRunner struct {
 	inprogress bool
 }
 
-// NewMserverRunner returns a new instance of Mtest that
-// wraps a Mserver Runner instance with it.
-func NewMserverRunner(logWriter io.Writer) (*Mtest, error) {
+// NewMserverRunMaker returns an instance of MtestMake that
+// aligns to MtestMaker interface.
+func NewMserverRunMaker(logWriter io.Writer) (MtestMaker, error) {
 
 	if logWriter == nil {
-		return nil, fmt.Errorf("Log writer not provided to MServerRunner")
+		return nil, fmt.Errorf("Log writer is required to create a MServerRunner")
 	}
 
-	return newMtest(&MserverRunner{
-		logger: log.New(logWriter, "", log.LstdFlags|log.Lmicroseconds),
-	})
+	return &MtestMake{
+		runner: &MserverRunner{
+			logger: log.New(logWriter, "", log.LstdFlags|log.Lmicroseconds),
+		},
+	}, nil
 }
 
 func (r *MserverRunner) Name() string {

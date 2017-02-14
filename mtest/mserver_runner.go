@@ -37,7 +37,8 @@ func NewMserverRunMaker(logWriter io.Writer) (MtestMaker, error) {
 
 	return &MtestMake{
 		runner: &MserverRunner{
-			logger: log.New(logWriter, "", log.LstdFlags|log.Lmicroseconds),
+			logger:     log.New(logWriter, "", log.LstdFlags|log.Lmicroseconds),
+			inprogress: false,
 		},
 	}, nil
 }
@@ -52,8 +53,8 @@ func (r *MserverRunner) Logger() *log.Logger {
 
 // Run runs the use cases against a running Mserver process
 func (r *MserverRunner) Run() ([]*Report, error) {
-	r.start()
-	defer r.stop()
+	r.Start()
+	defer r.Stop()
 
 	runThreads := os.Getenv("MTEST_MSERVER_RUNNER_THREADS")
 	if runThreads == "" {
@@ -80,11 +81,11 @@ func (r *MserverRunner) IsComplete() bool {
 	return !r.inprogress
 }
 
-func (r *MserverRunner) start() {
+func (r *MserverRunner) Start() {
 	r.inprogress = true
 }
 
-func (r *MserverRunner) stop() {
+func (r *MserverRunner) Stop() {
 	r.inprogress = false
 }
 
@@ -110,7 +111,7 @@ func (r *MserverRunner) runUseCases() ([]*Report, error) {
 
 	reports := make([]*Report, len(usecases))
 
-	if err != nil {
+	if err == nil {
 		report := &Report{
 			Runner:  MTEST_MSERVER_RUNNER_NAME,
 			Usecase: MSERVER_VOLUME_REMOVE_USECASE,

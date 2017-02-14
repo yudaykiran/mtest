@@ -52,7 +52,7 @@ func (pc MtestConfigMake) Make(configPaths []string) (*MtestConfig, error) {
 
 		// Didn't find any config at given path
 		if current == nil || reflect.DeepEqual(current, &MtestConfig{}) {
-			return nil, fmt.Errorf("No configuration loaded from %s", path)
+			return nil, fmt.Errorf("No configuration found at %s", path)
 		}
 
 		if dConfig == nil {

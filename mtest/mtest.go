@@ -7,25 +7,9 @@
 //
 // Mtest makes use of Start() method to trigger a particular Runner.
 //
-// Example of creating a particular Mtest:
-//
-//     mt := NewMtest(&GotgtRunner{})
-//     report, err := mt.Start()
-//
-// Creating a new Runner
-//
-// To build a custom Runner just create a type which satisfies the Runner
-// interface and pass it to the NewMtest method.
-//
-//     type GotgtRunner struct{}
-//     func (r *GotgtRunner) Run() (*Report, error) {...}
-//
-//     suite := NewMtest(&GotgtRunner{})
-//     report, err := suite.Start()
-//     if err == nil {
-//        return err
-//     }
-//
+// Interface based design has been used extensively to
+// provide flexibility in design & ensure each block of code can
+// be unit tested effectively.
 package mtest
 
 import (
@@ -76,6 +60,9 @@ type Runner interface {
 	// The logger that Runner is using currently.
 	// This one will be used by Mtest too.
 	Logger() *log.Logger
+
+	// Stops the runner
+	Stop()
 }
 
 // `Parallel` provides shared parallelism logic to be used by Mtest
@@ -183,15 +170,17 @@ func (t *Mtest) Start() ([]*Report, error) {
 	t.m.Lock()
 	defer t.m.Unlock()
 
-	if t.isRunning() {
-		// Run the Runner !!
+	// If not running then run
+	if !t.isRunning() {
+		t.running = true
 		reports, err := t.runner.Run()
 		if err != nil {
 			return nil, err
 		}
 
 		t.reports = reports
-		t.running = true
+	} else {
+		return nil, fmt.Errorf("Mtest is already running")
 	}
 
 	return t.reports, nil
@@ -202,6 +191,7 @@ func (t *Mtest) Stop() {
 	t.m.Lock()
 	defer t.m.Unlock()
 
+	t.runner.Stop()
 	t.running = false
 }
 
@@ -216,5 +206,5 @@ func (t *Mtest) IsRunning() bool {
 // isRunning helper method wrapping the definition of completion of
 // testsuite and runner.
 func (t *Mtest) isRunning() bool {
-	return t.running || t.runner.IsComplete()
+	return t.running || !t.runner.IsComplete()
 }

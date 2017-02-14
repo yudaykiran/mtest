@@ -24,22 +24,37 @@ func TestCommand_Args(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	type tcase struct {
-		name       string
-		args       []string
-		exit       int
-		out        string
+		// Name of the test case
+		name string
+
+		// Arguments provided to EBSCommand
+		args []string
+
+		// Expected exit code after command execution
+		exit int
+
+		// Expected output message after command execution
+		out string
+
+		// Refers to EBSCommand property of same name
+		initialized bool
+
+		// Refers to EBSCommand property of same name
 		mtConfMake config.MtestConfigMaker
-		mtestMake  mtest.MtestMaker
+
+		// Refers to EBSCommand property of same name
+		mtestMake mtest.MtestMaker
 	}
 
-  // List down all the permutations & combinations to
-  // achieve maximum coverage
+	// List down all the permutations & combinations to
+	// achieve maximum coverage
 	tcases := []tcase{
 		{
 			"Negative Test Case: 1",
 			[]string{},
 			1,
-			"Mtest-config-maker instance is nil",
+			"Writer-variants-maker instance is nil",
+			true,
 			nil,
 			nil,
 		},
@@ -47,7 +62,17 @@ func TestCommand_Args(t *testing.T) {
 			"Negative Test Case: 2",
 			[]string{"-config=" + tmpDir},
 			1,
-			"No configuration loaded",
+			"No configuration found at /tmp/mtest",
+			false,
+			nil,
+			nil,
+		},
+		{
+			"Negative Test Case: 3",
+			[]string{"-config=" + tmpDir},
+			1,
+			"No configuration found at /tmp/mtest",
+			false,
 			&config.MtestConfigMake{},
 			nil,
 		},
@@ -57,9 +82,10 @@ func TestCommand_Args(t *testing.T) {
 		ui := new(cli.MockUi)
 
 		cmd := &EBSCommand{
-			Ui:         ui,
-			mtConfMake: tc.mtConfMake,
-			mtestMake:  tc.mtestMake,
+			Ui:          ui,
+			mtConfMake:  tc.mtConfMake,
+			mtestMake:   tc.mtestMake,
+			initialized: tc.initialized,
 		}
 
 		// Run the cmd with test case' args
@@ -68,7 +94,7 @@ func TestCommand_Args(t *testing.T) {
 		actualMsg := ui.ErrorWriter.String()
 
 		if code != tc.exit {
-			t.Fatalf("\t\nerror: Exit code mismatch, \t\nTest Name: '%s', \t\nexpected: '0', \t\ngot: '%d', \t\nmsg: '%v'", tc.name, code, actualMsg)
+			t.Fatalf("\t\nerror: Exit code mismatch, \t\nTest Name: '%s', \t\nexpected: '%d', \t\ngot: '%d', \t\nmsg: '%v'", tc.name, tc.exit, code, actualMsg)
 		}
 
 		if expectMsg == "" && actualMsg != "" {

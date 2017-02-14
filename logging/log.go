@@ -19,7 +19,7 @@ type WriterVariantsMaker interface {
 }
 
 type WriterVariantsMake struct {
-	existing    io.Writer
+	Existing    io.Writer
 	gatedWriter *gatedwriter.Writer
 	pipedWriter *LogWriter
 	multiWriter io.Writer
@@ -42,7 +42,7 @@ func (w *WriterVariantsMake) Make(logLevel string, doSyslog bool) error {
 	// First create the gated log writer, which will buffer logs until we're ready.
 	gatedLogger := &gatedwriter.Writer{
 		// Set gated logger's writer against that of any existing writer
-		Writer: w.existing,
+		Writer: w.Existing,
 	}
 
 	// Now create the level filter, filtering logs of the specified level.

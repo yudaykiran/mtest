@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+	"sync"
 
 	"strings"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"github.com/openebs/mtest/logging"
 	"github.com/openebs/mtest/mtest"
 
-	"github.com/hashicorp/logutils"
 	"github.com/mitchellh/cli"
 	"github.com/openebs/mtest/logging/flag-helpers"
 )
@@ -27,15 +27,98 @@ const gracefulTimeout = 5 * time.Second
 // requirements. In addition, EBS version compatibility testing should
 // also be taken care of by this single command line implementation.
 type EBSCommand struct {
-	Ui          cli.Ui
-	args        []string
-	logFilter   *logutils.LevelFilter
-	mtConfMake  config.MtestConfigMaker
+	m    sync.Mutex
+	Ui   cli.Ui
+	args []string
+
+	// A flag indicating if dependencies & their initialization
+	// have been invoked or not
+	initialized bool
+
+	// A dependency that aligns to MtestConfigMaker interface
+	mtConfMake config.MtestConfigMaker
+
+	// A dependency that aligns to WriterVariantsMaker interface
 	wtrVarsMake logging.WriterVariantsMaker
-	mtestMake   mtest.MtestMaker
+
+	// A dependency that aligns to MtestMaker interface
+	mtestMake mtest.MtestMaker
 }
 
-// This will provide a final validated mtest configuration.
+// IsInitialized indicates if EBSCommand is being
+// initialized now
+func (c *EBSCommand) IsInitialized() bool {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	return c.isInitialized()
+}
+
+// isInitialized helper method defines whether EBSCommand
+// is being initialized right now
+func (c *EBSCommand) isInitialized() bool {
+	return c.initialized
+}
+
+// SetAll injects various dependencies required for
+// EBSCommand's functioning.
+// Each of these dependencies align to *Maker interface
+//
+// NOTE:
+//  Once injected, each dependant's Make() function
+//  might be executed.
+func (c *EBSCommand) SetAll() error {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	// Initialize only if not initialized earlier
+	if !c.isInitialized() {
+
+		// Build a config maker instance
+		if c.mtConfMake == nil {
+			c.mtConfMake = &config.MtestConfigMake{}
+		}
+
+		// Get the mtest config which will use the config maker
+		// instance. This is done so early as config is required
+		// for every other thing
+		mtconfig := c.readMtestConfig()
+		if mtconfig == nil {
+			return fmt.Errorf("Could not create mtest config")
+		}
+
+		// Build a writer variants maker instance
+		if c.wtrVarsMake == nil {
+			c.wtrVarsMake = &logging.WriterVariantsMake{
+				Existing: &cli.UiWriter{Ui: c.Ui},
+			}
+		}
+
+		// This will create variants of writer instances
+		err := c.wtrVarsMake.Make(strings.ToUpper(mtconfig.LogLevel), mtconfig.EnableSyslog)
+		if err != nil {
+			return err
+		}
+
+		// Build a Mtest maker instance that is associated
+		// with MserverRunner
+		if c.mtestMake == nil {
+			c.mtestMake, err = mtest.NewMserverRunMaker(c.wtrVarsMake.MultiWriter())
+			if err != nil {
+				return err
+			}
+		}
+
+		// Once all the above maker instances are set as dependencies
+		c.initialized = true
+	}
+
+	return nil
+}
+
+// This will read & load the Mtest config from the provided paths
+// do necessary validations & merge any user privided config
+// properties. All of these are done on top of default mtest config.
 func (c *EBSCommand) readMtestConfig() *config.MtestConfig {
 	// Variable to hold a set of config paths
 	var configPaths []string
@@ -72,57 +155,6 @@ func (c *EBSCommand) readMtestConfig() *config.MtestConfig {
 	// Merge any CLI options over config file options
 	mtconfig = mtconfig.Merge(cmdConfig)
 
-	return mtconfig
-}
-
-func (c *EBSCommand) SetMtestMaker(mtestMake mtest.MtestMaker) {
-	c.mtestMake = mtestMake
-}
-
-func (c *EBSCommand) SetMtConfMaker(mtConfMake config.MtestConfigMaker) {
-	c.mtConfMake = mtConfMake
-}
-
-func (c *EBSCommand) SetWriterMaker(wtrVarsMake logging.WriterVariantsMaker) {
-	c.wtrVarsMake = wtrVarsMake
-}
-
-func (c *EBSCommand) Run(args []string) int {
-	// Decorate this CLI's UI
-	c.Ui = &cli.PrefixedUi{
-		OutputPrefix: " ",
-		InfoPrefix:   "INFO:  ",
-		ErrorPrefix:  "ERROR: ",
-		Ui:           c.Ui,
-	}
-
-	// Set the args which may have the mtest config
-	c.args = args
-	// Parse the mtest config
-	mtconfig := c.readMtestConfig()
-	if mtconfig == nil {
-		return 1
-	}
-
-	if c.wtrVarsMake == nil {
-		c.Ui.Error(fmt.Sprintf("Writer-variants-maker instance is nil."))
-		return 1
-	}
-
-	// Setup the log outputs
-	gatedLogger := c.wtrVarsMake.GatedWriter()
-
-	if gatedLogger == nil {
-		return 1
-	}
-	defer gatedLogger.Flush()
-
-	multiLogger := c.wtrVarsMake.MultiWriter()
-	if multiLogger == nil {
-		c.Ui.Error(fmt.Sprintf("Log setup failed. Nil instance of multi-write logger found."))
-		return 1
-	}
-
 	// Inform about mt configuration file(s)
 	if len(mtconfig.Files) > 0 {
 		c.Ui.Info(fmt.Sprintf("Loaded configuration from %s", strings.Join(mtconfig.Files, ", ")))
@@ -132,7 +164,6 @@ func (c *EBSCommand) Run(args []string) int {
 
 	// Build Mtest information for messaging
 	info := make(map[string]string)
-	info["version"] = fmt.Sprintf("%s%s", mtconfig.Version, mtconfig.VersionPrerelease)
 	info["log level"] = mtconfig.LogLevel
 
 	// Sort the keys for output
@@ -154,6 +185,44 @@ func (c *EBSCommand) Run(args []string) int {
 	}
 	c.Ui.Output("")
 
+	return mtconfig
+}
+
+// This CLI sub-command's entry point
+func (c *EBSCommand) Run(args []string) int {
+
+	// Decorate this CLI's UI
+	c.Ui = &cli.PrefixedUi{
+		OutputPrefix: " ",
+		InfoPrefix:   "INFO:  ",
+		ErrorPrefix:  "ERROR: ",
+		Ui:           c.Ui,
+	}
+
+	// Set the args which may have the mtest config
+	c.args = args
+
+	// Dependency Injection
+	if !c.IsInitialized() {
+		err := c.SetAll()
+		if err != nil {
+			return 1
+		}
+	}
+
+	if c.wtrVarsMake == nil {
+		c.Ui.Error(fmt.Sprintf("Writer-variants-maker instance is nil."))
+		return 1
+	}
+
+	// Defer flush the gatedWriter which is linked to this
+	// CLI's io.writer during Dependency Injection
+	gatedLogger := c.wtrVarsMake.GatedWriter()
+	if gatedLogger == nil {
+		return 1
+	}
+	defer gatedLogger.Flush()
+
 	if c.mtestMake == nil {
 		c.Ui.Error(fmt.Sprintf("Mtest-maker instance is nil."))
 		return 1
@@ -164,18 +233,24 @@ func (c *EBSCommand) Run(args []string) int {
 	mt, err := c.mtestMake.Make()
 	if err != nil {
 		c.Ui.Error(err.Error())
-		return 0
+		return 1
 	}
 
 	// Output the header that the server has started
 	c.Ui.Output("Mtest ebs run started! Log data will start streaming:\n")
 
 	// Start EBS use cases
-	_, err = mt.Start()
+	rpts, err := mt.Start()
+	defer mt.Stop()
+
 	if err != nil {
 		c.Ui.Error(err.Error())
+		// Exit code is set to 0 as this has nothing to do
+		// with running of CLI. CLI execution was fine.
 		return 0
 	}
+
+	c.Ui.Info(fmt.Sprintf("%q", rpts))
 
 	return 0
 }

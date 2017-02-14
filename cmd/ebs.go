@@ -206,6 +206,7 @@ func (c *EBSCommand) Run(args []string) int {
 	if !c.IsInitialized() {
 		err := c.SetAll()
 		if err != nil {
+			c.Ui.Error(err.Error())
 			return 1
 		}
 	}

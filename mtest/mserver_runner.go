@@ -91,20 +91,25 @@ func (r *MserverRunner) Stop() {
 
 func (r *MserverRunner) runUseCases() ([]*Report, error) {
 
+	// Get the ebs driver
 	ebsDriver, err := driver.GetDriver(ebs.DRIVER_NAME, "", make(map[string]string))
 	if err != nil {
 		return nil, err
 	}
 
+	// The usecases can optionally be sent by the caller/client
 	usecases := []string{ebs.EBS_VOLUME_REMOVE_EXEC}
 
+	// Get the executors corresponding to each use-case
 	mapExecs, err := ebsDriver.Executors(usecases...)
 	if err != nil {
 		return nil, err
 	}
 
+	// The volume remover executor
 	volRemover := mapExecs[ebs.EBS_VOLUME_REMOVE_EXEC]
 
+	// Execute
 	resp, err := volRemover.Exec(driver.Request{
 		Name: "vol1",
 	})

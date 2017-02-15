@@ -1,6 +1,7 @@
 package ebs
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
+	awsreq "github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
@@ -61,13 +63,45 @@ func parseAwsError(err error) error {
 	return err
 }
 
+const errMsgTpl = `CAPTURED_AT: '%s', SERVICE: '%s', OPERATION: '%s', ERR_MSG: '%s'`
+
+func errHandler(hookName string) awsreq.NamedHandler {
+	return awsreq.NamedHandler{
+		Name: "mserver-handler",
+		Fn: func(r *awsreq.Request) {
+			if r.Error != nil {
+				r.Config.Logger.Log(fmt.Sprintf(errMsgTpl, hookName, r.ClientInfo.ServiceName, r.Operation.Name, r.Error.Error()))
+				return
+			}
+		},
+	}
+}
+
 func NewEBSClient() (*ebsClient, error) {
 	var err error
 
 	s := &ebsClient{}
-	s.metadataClient = ec2metadata.New(session.New())
+	//s.metadataClient = ec2metadata.New(session.New())
+
+	// TODO
+	// How to set this via config ?
+	oebsSess := session.New(&aws.Config{
+		Region:   aws.String("o-ebs"),
+		Endpoint: aws.String("127.0.0.1/latest"),
+		//LogLevel: aws.LogLevel(aws.LogDebug),
+		Logger: aws.NewDefaultLogger(),
+	})
+	cc := oebsSess.ClientConfig(ec2metadata.ServiceName)
+
+	// Add openebs hooks for debugging
+	cc.Handlers.Retry.PushFrontNamed(errHandler("retry-hook"))
+	cc.Handlers.AfterRetry.PushFrontNamed(errHandler("after-retry-hook"))
+
+	s.metadataClient = ec2metadata.NewClient(*cc.Config, cc.Handlers, cc.Endpoint, cc.SigningRegion)
+
 	if !s.isEC2Instance() {
-		return nil, fmt.Errorf("Not running on an EC2 instance")
+		mdClientInfo, _ := json.Marshal(s.metadataClient.ClientInfo)
+		return nil, fmt.Errorf("MSG: Not running on an EC2 instance. EBS_CLIENT_INFO: %s", mdClientInfo)
 	}
 
 	s.InstanceID, err = s.metadataClient.GetMetadata("instance-id")
@@ -91,6 +125,7 @@ func NewEBSClient() (*ebsClient, error) {
 	return s, nil
 }
 
+// This involves a actual http client request to AWS / MayaServer
 func (s *ebsClient) isEC2Instance() bool {
 	return s.metadataClient.Available()
 }

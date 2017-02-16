@@ -1,11 +1,19 @@
-> We shall list down the code, design, coverage, functional test, etc based
-challenges, issues, etc & their corresponding resolutions. It is all related to
-programming. Some of these may exist, while some would have been taken care of. 
-Some of these may have been reported at github issues. Neverthless, we shall 
-list specific cases for our new contributors to appreciate the effort & get them
-to the programming level enjoyed by the core / regular contributors.
+### What is this all about ?
 
-#### server gave HTTP response to HTTPS client
+We shall list down the essentials of code, design, coverage, functional testing,
+etc. based challenges, issues & their corresponding resolutions or approaches we
+have taken. It is all related to programming. Some of these challenges may still 
+exist, while some would have been taken care of. Some of these may have been 
+reported at github issues. 
+
+Neverthless, we shall list specific cases to enable new contributors to appreciate
+the effort & get them to the programming level enjoyed by the core / regular 
+contributors.
+
+On the other hand, this ensures seasoned golang programmers to raise issues w.r.t 
+design, programming, apporach, or anything they find in-appropriate.
+
+#### ERROR: server gave HTTP response to HTTPS client
 
 - This is the exact error received by mtest while trying to communicate with mayaserver
 
@@ -22,7 +30,9 @@ http: server gave HTTP response to HTTPS client
 DisableSSL: aws.Bool(true),
 ```
   
-#### Log message not readable
+#### LOGGING: Log message was not readable
+
+- This is what we got in our logs that tries to dump an array of mtest reports.
 
 ```bash
 INFO:  [%!q(*mtest.Report=<nil>) %!q(*mtest.Report=&{mserver.runner mserver.volume.remove.usecase 0xc420011d60 FAILED false})]

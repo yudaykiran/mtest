@@ -107,7 +107,7 @@ func (r *MserverRunner) runUseCases() ([]*Report, error) {
 	}
 
 	// The volume remover executor
-	volRemover := mapExecs[ebs.EBS_VOLUME_REMOVE_EXEC]
+	volRemover := mapExecs[ebs.EBS_VOLUME_CREATE_EXEC]
 
 	// Execute
 	resp, err := volRemover.Exec(driver.Request{

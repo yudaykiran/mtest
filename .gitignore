@@ -2,3 +2,4 @@ bin/
 pkg/
 .vagrant
 .aws
+ebs/

@@ -1,7 +1,7 @@
 package ebs
 
 import (
-	"encoding/json"
+	//"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"strconv"
@@ -63,7 +63,7 @@ func parseAwsError(err error) error {
 	return err
 }
 
-const errMsgTpl = `CAPTURED_AT: '%s', SERVICE: '%s', OPERATION: '%s', ERR_MSG: '%s'`
+const errMsgTpl = `CONTEXT: '%s', SERVICE: '%s', OPERATION: '%s', ERR_MSG: '%s'`
 
 func errHandler(hookName string) awsreq.NamedHandler {
 	return awsreq.NamedHandler{
@@ -77,6 +77,10 @@ func errHandler(hookName string) awsreq.NamedHandler {
 	}
 }
 
+// TODO
+//func addErrHandlers() {
+//}
+
 func NewEBSClient() (*ebsClient, error) {
 	var err error
 
@@ -84,25 +88,48 @@ func NewEBSClient() (*ebsClient, error) {
 	//s.metadataClient = ec2metadata.New(session.New())
 
 	// TODO
-	// How to set this via config ?
+	//    Set this via mtest config
 	oebsSess := session.New(&aws.Config{
-		Region:   aws.String("o-ebs"),
-		Endpoint: aws.String("127.0.0.1/latest"),
+		Region: aws.String("o-ebs"),
+
+		// NOTE:
+		//    OpenEBS will work only if the endpoint is overridden
+		//
+		// TODO
+		//    Need to check if this can be done via aws-sdk-go config file
+		// or K8s yaml specs ?
+		Endpoint: aws.String("172.28.128.4:5656/latest"),
+
+		// TODO
+		//    Need to set this via config file ?
+		DisableSSL: aws.Bool(true),
+
+		// TODO
+		//    This should be done based on a flag
+		// Currently commented due to its verbosity
 		//LogLevel: aws.LogLevel(aws.LogDebug),
+
+		// We will use a logger to hook into aws-sdk-go lib
+		// & capture the logs.
+		// TODO
+		//    Set the mtest logger instead.
+		// NOTE - This is currently set to std output
 		Logger: aws.NewDefaultLogger(),
 	})
 	cc := oebsSess.ClientConfig(ec2metadata.ServiceName)
 
 	// Add openebs hooks for debugging
-	cc.Handlers.Retry.PushFrontNamed(errHandler("retry-hook"))
-	cc.Handlers.AfterRetry.PushFrontNamed(errHandler("after-retry-hook"))
+	// TODO
+	// Do this based on some flag
+	//cc.Handlers.Retry.PushFrontNamed(errHandler("retry-hook"))
+	//cc.Handlers.AfterRetry.PushFrontNamed(errHandler("after-retry-hook"))
 
 	s.metadataClient = ec2metadata.NewClient(*cc.Config, cc.Handlers, cc.Endpoint, cc.SigningRegion)
 
-	if !s.isEC2Instance() {
-		mdClientInfo, _ := json.Marshal(s.metadataClient.ClientInfo)
-		return nil, fmt.Errorf("MSG: Not running on an EC2 instance. EBS_CLIENT_INFO: %s", mdClientInfo)
-	}
+	//if !s.isEC2Instance() {
+	//mdClientInfo, _ := json.Marshal(s.metadataClient.ClientInfo)
+	//return nil, fmt.Errorf("Not running on an EC2 instance. EBS_CLIENT_INFO: %s", mdClientInfo)
+	//}
 
 	s.InstanceID, err = s.metadataClient.GetMetadata("instance-id")
 	if err != nil {
@@ -126,9 +153,9 @@ func NewEBSClient() (*ebsClient, error) {
 }
 
 // This involves a actual http client request to AWS / MayaServer
-func (s *ebsClient) isEC2Instance() bool {
-	return s.metadataClient.Available()
-}
+//func (s *ebsClient) isEC2Instance() bool {
+//	return s.metadataClient.Available()
+//}
 
 func (s *ebsClient) waitForVolumeTransition(volumeID, start, end string) error {
 	volume, err := s.GetVolume(volumeID)

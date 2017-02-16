@@ -251,7 +251,7 @@ func (c *EBSCommand) Run(args []string) int {
 		return 0
 	}
 
-	c.Ui.Info(fmt.Sprintf("%q", rpts))
+	c.Ui.Info(fmt.Sprintf("%+s", rpts))
 
 	return 0
 }

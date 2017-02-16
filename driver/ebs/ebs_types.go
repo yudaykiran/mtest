@@ -49,6 +49,54 @@ const (
 
 	// The binary used by ebs driver for unmount related operations
 	UMOUNT_BINARY = "umount"
+
+	// Mount point parameter
+	OPT_MOUNT_POINT = "MountPoint"
+
+	// Volume size parameter
+	OPT_SIZE = "Size"
+
+	// Volume format parameter
+	OPT_FORMAT = "Format"
+
+	// Volume ID parameter
+	OPT_VOLUME_ID = "VolumeID"
+
+	// Volume Name parameter
+	OPT_VOLUME_NAME = "VolumeName"
+
+	// Volume Driver parameter
+	OPT_VOLUME_DRIVER_ID = "VolumeDriverID"
+
+	// Volume Type parameter
+	OPT_VOLUME_TYPE = "VolumeType"
+
+	// Volume IOPS parameter
+	OPT_VOLUME_IOPS = "VolumeIOPS"
+
+	// Volume Created Time parameter
+	OPT_VOLUME_CREATED_TIME = "VolumeCreatedAt"
+
+	// Snapshot ID parameter
+	OPT_SNAPSHOT_ID = "SnapshotID"
+
+	// Snapshot Name parameter
+	OPT_SNAPSHOT_NAME = "SnapshotName"
+
+	// Snapshot Created Time parameter
+	OPT_SNAPSHOT_CREATED_TIME = "SnapshotCreatedAt"
+
+	// Backup URL parameter
+	OPT_BACKUP_URL = "BackupURL"
+
+	// Reference Only parameter
+	OPT_REFERENCE_ONLY = "ReferenceOnly"
+
+	// Prepare for VM parameter
+	OPT_PREPARE_FOR_VM = "PrepareForVM"
+
+	// Filesystem parameter
+	OPT_FILESYSTEM = "Filesystem"
 )
 
 var (

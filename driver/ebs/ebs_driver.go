@@ -16,29 +16,6 @@ import (
 	"github.com/openebs/mtest/util"
 )
 
-// Properties used by ebs driver for various
-// volume related operations. These are typically
-// set as keys in a map of options passed around
-// during execution of volume operations.
-const (
-	OPT_MOUNT_POINT           = "MountPoint"
-	OPT_SIZE                  = "Size"
-	OPT_FORMAT                = "Format"
-	OPT_VOLUME_ID             = "VolumeID"
-	OPT_VOLUME_NAME           = "VolumeName"
-	OPT_VOLUME_DRIVER_ID      = "VolumeDriverID"
-	OPT_VOLUME_TYPE           = "VolumeType"
-	OPT_VOLUME_IOPS           = "VolumeIOPS"
-	OPT_VOLUME_CREATED_TIME   = "VolumeCreatedAt"
-	OPT_SNAPSHOT_ID           = "SnapshotID"
-	OPT_SNAPSHOT_NAME         = "SnapshotName"
-	OPT_SNAPSHOT_CREATED_TIME = "SnapshotCreatedAt"
-	OPT_BACKUP_URL            = "BackupURL"
-	OPT_REFERENCE_ONLY        = "ReferenceOnly"
-	OPT_PREPARE_FOR_VM        = "PrepareForVM"
-	OPT_FILESYSTEM            = "Filesystem"
-)
-
 // InitExecFunc is the initialize function for each EBS driver executor(s).
 // Each executor must implement this function and register itself
 // through RegisterAsEBSExecutor().

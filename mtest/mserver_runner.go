@@ -18,6 +18,9 @@ const (
 
 	// Constant to name the volume removal use-case
 	MSERVER_VOLUME_REMOVE_USECASE = "mserver.volume.remove.usecase"
+
+	// Constant to name the volume creation use-case
+	MSERVER_VOLUME_CREATE_USECASE = "mserver.volume.create.usecase"
 )
 
 // A MserverRunner structure definition
@@ -98,7 +101,11 @@ func (r *MserverRunner) runUseCases() ([]*Report, error) {
 	}
 
 	// The usecases can optionally be sent by the caller/client
-	usecases := []string{ebs.EBS_VOLUME_REMOVE_EXEC}
+	// TODO
+	//    The usecase names & corresponding executions should be invoked
+	// in sequence with various options/flags to handle this **chain of
+	// execution**.
+	usecases := []string{ebs.EBS_VOLUME_CREATE_EXEC}
 
 	// Get the executors corresponding to each use-case
 	mapExecs, err := ebsDriver.Executors(usecases...)
@@ -106,12 +113,14 @@ func (r *MserverRunner) runUseCases() ([]*Report, error) {
 		return nil, err
 	}
 
-	// The volume remover executor
-	volRemover := mapExecs[ebs.EBS_VOLUME_CREATE_EXEC]
+	// The volume executor
+	volCtr := mapExecs[ebs.EBS_VOLUME_CREATE_EXEC]
 
 	// Execute
-	resp, err := volRemover.Exec(driver.Request{
+	resp, err := volCtr.Exec(driver.Request{
 		Name: "vol1",
+		//Options: map[string]string{
+		//},
 	})
 
 	reports := make([]*Report, len(usecases))
@@ -119,7 +128,7 @@ func (r *MserverRunner) runUseCases() ([]*Report, error) {
 	if err == nil {
 		report := &Report{
 			Runner:  MTEST_MSERVER_RUNNER_NAME,
-			Usecase: MSERVER_VOLUME_REMOVE_USECASE,
+			Usecase: MSERVER_VOLUME_CREATE_USECASE,
 			Message: resp,
 			Status:  "OK",
 			Success: true,
@@ -130,8 +139,8 @@ func (r *MserverRunner) runUseCases() ([]*Report, error) {
 	} else {
 		report := &Report{
 			Runner:  MTEST_MSERVER_RUNNER_NAME,
-			Usecase: MSERVER_VOLUME_REMOVE_USECASE,
-			Message: err,
+			Usecase: MSERVER_VOLUME_CREATE_USECASE,
+			Message: err.Error(),
 			Status:  "FAILED",
 			Success: false,
 		}

@@ -59,7 +59,7 @@ func (v *VolumeCreator) Exec(req driver.Request) (*driver.Response, error) {
 	}
 
 	// EBS volume ID
-	volumeID := opts[OPT_VOLUME_DRIVER_ID]
+	volumeID := opts[OPT_VOLUME_ID]
 	backupURL := opts[OPT_BACKUP_URL]
 	if backupURL != "" && volumeID != "" {
 		return nil, fmt.Errorf("Cannot specify both backup and EBS volume ID")

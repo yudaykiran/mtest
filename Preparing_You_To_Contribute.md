@@ -33,7 +33,7 @@ Other names that came to our mind were:
 However, we wanted folks to understand & enable them to contribute to the project
 with little learning curve & hence this name.
 
-### Simple Items
+### [A] Simple Items
 
 #### LOGGING: Log message was not readable
 
@@ -67,7 +67,7 @@ with little learning curve & hence this name.
 
 ```
 
-### Intermediate Items
+### [B] Intermediate Items
 
 #### ERROR: server gave HTTP response to HTTPS client
 
@@ -89,4 +89,4 @@ with little learning curve & hence this name.
   DisableSSL: aws.Bool(true),
 ```
   
-### Advanced Items
+### [C] Advanced Items

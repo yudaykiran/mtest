@@ -49,14 +49,17 @@ func sleepBeforeRetry() {
 	time.Sleep(RETRY_INTERVAL * time.Second)
 }
 
+const awsErrMsgTpl = `CONTEXT: '%s', ERR_CODE: '%s', ERR_MSG: '%s', ERR_ORIG: '%s'`
+const awsReqFailedErrMsgTPl = `, AWS_REQ_FAIL_STATUS_CODE: '%d', AWS_REQ_FAIL_REQ_ID: '%s'`
+
 func parseAwsError(err error) error {
 	if err == nil {
 		return nil
 	}
 	if awsErr, ok := err.(awserr.Error); ok {
-		message := fmt.Sprintln("AWS Error: ", awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+		message := fmt.Sprintf(awsErrMsgTpl, "aws-error", awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 		if reqErr, ok := err.(awserr.RequestFailure); ok {
-			message += fmt.Sprintln(reqErr.StatusCode(), reqErr.RequestID())
+			message += fmt.Sprintf(awsReqFailedErrMsgTPl, reqErr.StatusCode(), reqErr.RequestID())
 		}
 		return fmt.Errorf(message)
 	}
@@ -146,8 +149,9 @@ func NewEBSClient() (*ebsClient, error) {
 		return nil, err
 	}
 
-	config := aws.NewConfig().WithRegion(s.Region)
-	s.ec2Client = ec2.New(session.New(), config)
+	//config := aws.NewConfig().WithRegion(s.Region)
+	//s.ec2Client = ec2.New(session.New(), config)
+	s.ec2Client = ec2.New(oebsSess)
 
 	return s, nil
 }
